@@ -1,2 +1,5 @@
 python-telegram-bot
 requests
+sqlite3
+Flask
+gunicorn
