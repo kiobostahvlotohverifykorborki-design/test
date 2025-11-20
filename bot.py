@@ -13,28 +13,43 @@ from telegram.ext import (
     filters
 )
 import uuid 
+# --- NEW: Import Flask for Webhook handling ---
+from flask import Flask, request, jsonify
+# -----------------------------------------------
 
-# --- Configuration ---
-TELEGRAM_BOT_TOKEN = "8269911853:AAF4uOGA3wCj9rb9-Uh96jpjS3O_v6yZNxY"  # Get from @BotFather
+# --- Configuration (using os.environ for deployment best practice) ---
+# It's better to use environment variables in Render
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8269911853:AAF4uOGA3wCj9rb9-Uh96jpjS3O_v6yZNxY")
 API_BASE_URL = "https://bot-api-1.inbo.ir/api/v2"
 EXTERNAL_API_KEY = "6065152197:nJ1Xb5nBn0C2hCZGSSnz6QsS6m3910xO5PjEilQl"
 
 # Admin user ID (Your Telegram user ID - get it from @userinfobot)
-ADMIN_USER_ID = 6065152197  # Replace with your Telegram user ID
-ADMIN_CHAT_ID = 6065152197 # The ID where payment requests will be sent (usually the same as ADMIN_USER_ID)
+ADMIN_USER_ID = int(os.environ.get("ADMIN_USER_ID", 6065152197))
+ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", 6065152197)) # The ID where payment requests will be sent
+
+# --- NEW: Webhook Settings ---
+PORT = int(os.environ.get("PORT", 5000))
+# IMPORTANT: Replace 'YOUR_RENDER_SERVICE_URL' with your actual Render service URL
+# Example: https://my-reseller-bot.onrender.com
+# Render will automatically set the WEBHOOK_URL environment variable for you if you use its template
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://YOUR_RENDER_SERVICE_URL.onrender.com") 
+# Webhook Path should be unique and secret
+WEBHOOK_PATH = f"/{TELEGRAM_BOT_TOKEN}"
+# -----------------------------
 
 # Support contact
 SUPPORT_USERNAME = "@sessionerowner"  # Your support Telegram username
 
 # Helecta Payment Gateway (Keeping placeholders but logic is changed to manual)
-HELECTA_API_KEY = "YOUR_HELECTA_API_KEY"  # Your Helecta API key
-HELECTA_MERCHANT_KEY = "YOUR_HELECTA_MERCHANT_KEY"  # Your Helecta Merchant key
-HELECTA_API_URL = "https://api.helecta.com/v1"  # Helecta API endpoint
+HELECTA_API_KEY = "YOUR_HELECTA_API_KEY"
+HELECTA_MERCHANT_KEY = "YOUR_HELECTA_MERCHANT_KEY"
+HELECTA_API_URL = "https://api.helecta.com/v1"
 
 # Allowed countries (only these will be shown)
 ALLOWED_COUNTRIES = ['CA', 'US', 'SL', 'VN', 'ET']  # Canada, United States, Sierra Leone, Vietnam, Ethiopia
 
 # Country flags
+# ... (COUNTRY_FLAGS dictionary remains the same)
 COUNTRY_FLAGS = {
     'CA': '🇨🇦',
     'US': '🇺🇸',
@@ -70,6 +85,7 @@ DB_FILE = "reseller_bot.db"
 STATE_ADD_BALANCE = 1
 
 # Language texts
+# ... (TEXTS dictionary remains the same)
 TEXTS = {
     'en': {
         'welcome': '🤖 *Welcome {name}!*\n\nThis is a phone number reseller bot.\n\nUse the menu below to get started! 👇',
@@ -101,6 +117,7 @@ TEXTS = {
     }
 }
 
+
 # Setup logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -108,7 +125,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- Database Functions ---
+# --- Database Functions (All remain the same) ---
+# ... (init_database, get_markup, set_markup, get_or_create_user, update_user_balance, 
+#      get_user_balance, get_all_users, get_user_transactions, get_user_language, 
+#      set_user_language, get_text, get_user_stats, get_active_reservation, 
+#      set_active_reservation, set_reservation_message_id, get_reservation_message_id,
+#      clear_active_reservation, create_manual_payment_request, complete_manual_payment, 
+#      create_helecta_payment) ...
+
 def init_database():
     """Initialize SQLite database"""
     conn = sqlite3.connect(DB_FILE)
@@ -535,7 +559,8 @@ def get_persistent_menu_keyboard(user_id):
     
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# --- Helper Functions ---
+# --- Helper Functions (All remain the same) ---
+# ... (apply_markup, calculate_profit, is_admin, make_api_request) ...
 def apply_markup(api_price):
     """Apply fixed markup to API price"""
     markup = get_markup()
@@ -580,7 +605,8 @@ def make_api_request(endpoint, method="GET", data=None):
                 raise Exception(f"API Error: {e.response.status_code}")
         raise Exception(f"Connection error: {str(e)}")
 
-# --- Command Handlers ---
+# --- Command Handlers (All remain the same) ---
+# ... (start, balance, countries, buy, my_history, transactions_command) ...
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start command handler"""
     user = update.effective_user
@@ -753,7 +779,8 @@ async def transactions_command(update: Update, context: ContextTypes.DEFAULT_TYP
     except Exception as e:
         await update.message.reply_text(f'❌ Error: {str(e)}')
 
-# --- Admin Commands ---
+# --- Admin Commands (All remain the same) ---
+# ... (users_command, addbalance_command, stats_command, setmarkup_command) ...
 async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """List all users (admin only)"""
     if not is_admin(update.effective_user.id):
@@ -920,7 +947,8 @@ async def setmarkup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f'❌ Error: {str(e)}')
 
-# --- Callback Query Handler ---
+# --- Callback Query Handler (Remains the same) ---
+# ... (button_callback, buy_menu) ...
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle button clicks"""
     query = update.callback_query
@@ -1493,7 +1521,7 @@ async def buy_menu(query, user_id):
 
 # --- Main Function ---
 def main():
-    """Start the bot"""
+    """Setup the bot and start the Webhook server"""
     # Initialize database
     init_database()
     
@@ -1660,14 +1688,57 @@ Once the payment is verified, the admin will approve your request.
     # Add callback query handler
     application.add_handler(CallbackQueryHandler(button_callback))
     
-    # Start the bot
-    logger.info("🤖 Reseller Bot is starting...")
+    # --- NEW: Webhook Setup ---
+    logger.info("🤖 Reseller Bot is starting in Webhook mode...")
     logger.info("✅ Database initialized")
-    logger.info(f"👑 Admin ID: {ADMIN_USER_ID}")
-    logger.info(f"💰 Current Markup: ${get_markup():.2f}")
-    logger.info("📡 Bot is now running!")
     
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Set up Flask app
+    app = Flask(__name__)
+    
+    @app.route("/")
+    def index():
+        """Simple check to make sure the app is running (Render Health Check)"""
+        return jsonify({"status": "ok", "message": "Telegram Bot Webhook is running."}), 200
+
+    @app.route(WEBHOOK_PATH, methods=["POST"])
+    async def telegram_webhook():
+        """Handle incoming Telegram updates from the webhook"""
+        if request.method == "POST":
+            # Process the update using the Telegram Application instance
+            await application.update_queue.put(Update.de_json(request.get_json(force=True), application.bot))
+            return "OK"
+        return "Method Not Allowed", 405
+
+    async def run_bot_in_background():
+        """Start the PTB application components, but not the polling/webhook directly"""
+        await application.start()
+        # The line application.run_webhook is now replaced by running the Flask server
+        # and manually putting updates into the update_queue in the webhook route.
+
+    # Start the PTB application's internal functions (like handling updates in the queue)
+    import threading
+    bot_thread = threading.Thread(target=lambda: application.loop.run_until_complete(run_bot_in_background()))
+    bot_thread.start()
+
+    # Set webhook URL for Telegram
+    application.loop.run_until_complete(
+        application.bot.set_webhook(url=f"{WEBHOOK_URL}{WEBHOOK_PATH}")
+    )
+    logger.info(f"📡 Webhook set to: {WEBHOOK_URL}{WEBHOOK_PATH}")
+    
+    # Start the Flask server
+    logger.info(f"🌐 Starting web server on port {PORT}...")
+    # Use '0.0.0.0' to listen on all interfaces, which is necessary for Render.
+    return app 
+    # NOTE: We return the Flask app instance instead of calling app.run() or application.run_polling()
+    # This is required for deployment environments like Render using Gunicorn or similar WSGI servers.
 
 if __name__ == '__main__':
-    main()
+    # When running locally for testing, you might still want polling
+    # application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # But for Render, the main function needs to return the app object.
+    # To run this locally, you'd typically use:
+    # app = main()
+    # app.run(host="0.0.0.0", port=PORT)
+    # But for a Gunicorn setup on Render, the 'gunicorn' command handles the server startup.
+    app = main()
